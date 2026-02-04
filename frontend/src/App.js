@@ -1,180 +1,212 @@
 import React, { useState, useEffect } from 'react';
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, ResponsiveContainer, BarChart, Bar, PieChart, Pie, Cell } from 'recharts';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, ResponsiveContainer, LineChart, Line, PieChart, Pie, Cell } from 'recharts';
+import './App.css';
 
 function App() {
-  const [dashboardData, setDashboardData] = useState({
-    totalPosts: 47200,
-    activeSubreddits: 156,
-    avgEngagement: 342,
-    weeklyGrowth: 12
+  const [stats, setStats] = useState({
+    totalPosts: 0,
+    activeSubreddits: 0,
+    avgEngagement: 0
   });
+  
+  const [sentimentData, setSentimentData] = useState([]);
+  const [trendingPosts, setTrendingPosts] = useState([]);
+  const [subredditPerformance, setSubredditPerformance] = useState([]);
+  const [activityHeatmap, setActivityHeatmap] = useState([]);
+  const [volumeData, setVolumeData] = useState([]);
+  const [pieChartData, setPieChartData] = useState([]);
+  const [loading, setLoading] = useState(true);
 
-  const trendingPosts = [
-    {
-      title: "AI breakthrough: New language model achieves human-level reasoning",
-      subreddit: "r/technology",
-      upvotes: "2.4k",
-      comments: "847",
-      sentiment: "92% positive"
-    },
-    {
-      title: "Python 3.12 released with major performance improvements",
-      subreddit: "r/programming",
-      upvotes: "1.8k",
-      comments: "312",
-      sentiment: "89% positive"
-    },
-    {
-      title: "Data science job market analysis for 2024",
-      subreddit: "r/datascience",
-      upvotes: "1.2k",
-      comments: "156",
-      sentiment: "74% positive"
-    }
-  ];
+  useEffect(() => {
+    fetchDashboardData();
+  }, []);
 
-  const subredditPerformance = [
-    { name: "r/technology", posts: 1200, comments: 15700, avgScore: 485 },
-    { name: "r/programming", posts: 856, comments: 9200, avgScore: 312 },
-    { name: "r/datascience", posts: 623, comments: 5800, avgScore: 298 },
-    { name: "r/MachineLearning", posts: 445, comments: 3100, avgScore: 267 }
-  ];
+  const fetchDashboardData = async () => {
+  try {
+    const response = await fetch('/reddit_processed_20260203_094456.csv');
+    const csvText = await response.text();
+    
+    // Parse CSV better
+    const lines = csvText.split('\n').filter(line => line.trim());
+    const headers = lines[0].split(',').map(h => h.trim());
+    
+    const data = lines.slice(1).map(line => {
+      // Handle quoted values properly
+      const values = line.match(/(".*?"|[^,]+)(?=\s*,|\s*$)/g) || [];
+      return headers.reduce((obj, header, index) => {
+        obj[header] = values[index] ? values[index].replace(/^"|"$/g, '').trim() : '';
+        return obj;
+      }, {});
+    }).filter(row => row.post_id && row.subreddit); // Filter valid rows
 
-  const sentimentData = [
-    { name: "Very Positive", value: 2900, color: "#ea580c" },
-    { name: "Positive", value: 5600, color: "#f97316" },
-    { name: "Neutral", value: 3200, color: "#fb923c" },
-    { name: "Negative", value: 1100, color: "#fdba74" },
-    { name: "Very Negative", value: 600, color: "#fed7aa" }
-  ];
+    // Filter to only our 5 main subreddits
+    const mainSubreddits = ['technology', 'programming', 'datascience', 'MachineLearning', 'Python'];
+    const filteredData = data.filter(row => mainSubreddits.includes(row.subreddit));
 
-  const activityHeatmap = [
-    { time: "12AM", activity: 45 },
-    { time: "6AM", activity: 25 },
-    { time: "12PM", activity: 65 },
-    { time: "6PM", activity: 87 },
-    { time: "11PM", activity: 78 }
-  ];
+    // Calculate stats
+    const totalPosts = filteredData.length;
+    const activeSubreddits = new Set(filteredData.map(d => d.subreddit)).size;
+    
+    // Fix engagement calculation - handle NaN
+    const totalEngagement = filteredData.reduce((sum, d) => {
+      const engagement = parseInt(d.engagement);
+      return sum + (isNaN(engagement) ? 0 : engagement);
+    }, 0);
+    const avgEngagement = Math.round(totalEngagement / totalPosts) || 0;
 
-  const volumeData = [
-    { day: "Mon", posts: 1800, comments: 8500 },
-    { day: "Tue", posts: 2100, comments: 12500 },
-    { day: "Wed", posts: 1900, comments: 10200 },
-    { day: "Thu", posts: 2300, comments: 14800 },
-    { day: "Fri", posts: 2000, comments: 12800 },
-    { day: "Sat", posts: 2400, comments: 16500 },
-    { day: "Sun", posts: 2200, comments: 15200 }
-  ];
+    setStats({ totalPosts, activeSubreddits, avgEngagement });
 
-  const pieChartData = [
-    { name: "r/technology", value: 35, color: "#ea580c" },
-    { name: "r/programming", value: 25, color: "#f97316" },
-    { name: "r/datascience", value: 18, color: "#fb923c" },
-    { name: "r/MachineLearning", value: 12, color: "#fdba74" },
-    { name: "Others", value: 10, color: "#fed7aa" }
-  ];
+    // Rest of sentiment code stays the same...
+    const sentimentCounts = filteredData.reduce((acc, d) => {
+      const sentiment = d.sentiment_category;
+      acc[sentiment] = (acc[sentiment] || 0) + 1;
+      return acc;
+    }, {});
 
-  const cardStyle = {
-    background: 'linear-gradient(135deg, #f97316 0%, #ea580c 100%)',
-    borderRadius: '12px',
-    padding: '24px',
-    color: 'white',
-    boxShadow: '0 10px 25px rgba(0, 0, 0, 0.1)',
-    marginBottom: '16px'
-  };
+    setSentimentData([
+      { name: 'Negative', value: sentimentCounts.negative || 0 },
+      { name: 'Neutral', value: sentimentCounts.neutral || 0 },
+      { name: 'Positive', value: sentimentCounts.positive || 0 }
+    ]);
 
-  const containerStyle = {
-    minHeight: '100vh',
-    backgroundColor: '#f6ebe2ff',
-    padding: '24px',
-    fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
-  };
+    // Trending posts
+    const sorted = filteredData
+      .sort((a, b) => parseInt(b.score || 0) - parseInt(a.score || 0))
+      .slice(0, 5);
+    
+    setTrendingPosts(sorted.map(post => ({
+      title: post.title,
+      subreddit: post.subreddit,
+      score: post.score,
+      comments: post.num_comments,
+      sentiment: post.sentiment_category
+    })));
 
-  const whiteCardStyle = {
-    backgroundColor: 'white',
-    borderRadius: '12px',
-    padding: '24px',
-    boxShadow: '0 4px 6px rgba(0, 0, 0, 0.05)',
-    border: '1px solid #e5e7eb',
-    marginBottom: '32px'
-  };
+      // Subreddit Performance
+      const subredditStats = {};
+    filteredData.forEach(post => {
+      const sub = post.subreddit;
+      if (!subredditStats[sub]) {
+        subredditStats[sub] = { posts: 0, comments: 0, scores: [] };
+      }
+      subredditStats[sub].posts++;
+      subredditStats[sub].comments += parseInt(post.num_comments || 0);
+      const score = parseInt(post.score || 0);
+      if (!isNaN(score)) subredditStats[sub].scores.push(score);
+    });
 
-  const sectionHeaderStyle = {
-    display: 'flex',
-    alignItems: 'center',
-    marginBottom: '24px'
-  };
+    const perfData = Object.entries(subredditStats).map(([name, stats]) => ({
+      name: `r/${name}`,
+      posts: stats.posts,
+      comments: stats.comments,
+      avgScore: stats.scores.length > 0 
+        ? Math.round(stats.scores.reduce((a, b) => a + b, 0) / stats.scores.length)
+        : 0
+    }));
+    setSubredditPerformance(perfData);
 
-  const colorBarStyle = {
-    width: '8px',
-    height: '24px',
-    borderRadius: '4px',
-    marginRight: '12px'
-  };
+    // Activity Heatmap, Volume, Pie chart - same as before but use filteredData
+    const hourCounts = {};
+    filteredData.forEach(post => {
+      const hour = parseInt(post.created_hour || 0);
+      hourCounts[hour] = (hourCounts[hour] || 0) + 1;
+    });
+
+    const heatmapData = Object.entries(hourCounts)
+      .map(([hour, count]) => ({
+        time: `${hour}:00`,
+        activity: count
+      }))
+      .sort((a, b) => parseInt(a.time) - parseInt(b.time));
+    setActivityHeatmap(heatmapData);
+
+    // Volume over time
+    const dayCounts = {};
+    const dayComments = {};
+    filteredData.forEach(post => {
+      const day = post.created_day;
+      dayCounts[day] = (dayCounts[day] || 0) + 1;
+      dayComments[day] = (dayComments[day] || 0) + parseInt(post.num_comments || 0);
+    });
+
+    const dayOrder = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+    const volumeChartData = dayOrder
+      .filter(day => dayCounts[day])
+      .map(day => ({
+        day: day.slice(0, 3),
+        posts: dayCounts[day] || 0,
+        comments: dayComments[day] || 0
+      }));
+    setVolumeData(volumeChartData);
+
+      // Top Performing Subreddits (pie chart)
+      const colors = ['#ea580c', '#f97316', '#fb923c', '#fdba74', '#fed7aa'];
+    const pieData = perfData
+      .sort((a, b) => b.posts - a.posts)
+      .slice(0, 5)
+      .map((sub, index) => ({
+        name: sub.name,
+        value: sub.posts,
+        color: colors[index]
+      }));
+    setPieChartData(pieData);
+
+    setLoading(false);
+  } catch (error) {
+    console.error('Error fetching data:', error);
+    setLoading(false);
+  }
+};
+
+  if (loading) {
+    return <div className="dashboard-container">Loading...</div>;
+  }
 
   return (
-    <div style={containerStyle}>
-      <div style={{ maxWidth: '1280px', margin: '0 auto' }}>
+    <div className="dashboard-container">
+      <div className="dashboard-wrapper">
         {/* Header */}
-        <div style={{ marginBottom: '32px' }}>
-          <h1 style={{ fontSize: '36px', fontWeight: 'bold', color: '#111827', marginBottom: '8px' }}>
-            Reddit Data Pipeline Dashboard
-          </h1>
-          <p style={{ color: '#6b7280', fontSize: '16px' }}>
-            Real-time analytics from your Reddit data pipeline
-          </p>
+        <div className="dashboard-header">
+          <h1 className="dashboard-title">Reddit Data Pipeline Dashboard</h1>
+          <p className="dashboard-subtitle">Real-time analytics from your Reddit data pipeline</p>
         </div>
 
         {/* KPI Cards */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '24px', marginBottom: '32px' }}>
-          <div style={cardStyle}>
-            <h3 style={{ fontSize: '18px', fontWeight: '500', opacity: 0.9, marginBottom: '8px' }}>
-              Total Posts Analyzed
-            </h3>
-            <div style={{ fontSize: '48px', fontWeight: 'bold', marginBottom: '4px' }}>47.2K</div>
-            <div style={{ fontSize: '14px', opacity: 0.8 }}>+12% this week</div>
+        <div className="kpi-grid">
+          <div className="kpi-card">
+            <h3 className="kpi-label">Total Posts Analyzed</h3>
+            <div className="kpi-value">{stats.totalPosts}</div>
+            <div className="kpi-description">Monitoring daily</div>
           </div>
-          <div style={cardStyle}>
-            <h3 style={{ fontSize: '18px', fontWeight: '500', opacity: 0.9, marginBottom: '8px' }}>
-              Active Subreddits
-            </h3>
-            <div style={{ fontSize: '48px', fontWeight: 'bold', marginBottom: '4px' }}>156</div>
-            <div style={{ fontSize: '14px', opacity: 0.8 }}>Monitoring daily</div>
+          <div className="kpi-card">
+            <h3 className="kpi-label">Active Subreddits</h3>
+            <div className="kpi-value">{stats.activeSubreddits}</div>
+            <div className="kpi-description">Monitoring daily</div>
           </div>
-          <div style={cardStyle}>
-            <h3 style={{ fontSize: '18px', fontWeight: '500', opacity: 0.9, marginBottom: '8px' }}>
-              Avg Engagement
-            </h3>
-            <div style={{ fontSize: '48px', fontWeight: 'bold', marginBottom: '4px' }}>342</div>
-            <div style={{ fontSize: '14px', opacity: 0.8 }}>Comments + Upvotes</div>
+          <div className="kpi-card">
+            <h3 className="kpi-label">Avg Engagement</h3>
+            <div className="kpi-value">{stats.avgEngagement}</div>
+            <div className="kpi-description">Comments + Upvotes</div>
           </div>
         </div>
 
-        {/* Main Content Grid */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(500px, 1fr))', gap: '32px', marginBottom: '32px' }}>
+        {/* First Row */}
+        <div className="content-grid">
           {/* Trending Posts */}
-          <div style={whiteCardStyle}>
-            <div style={sectionHeaderStyle}>
-              <div style={{ ...colorBarStyle, backgroundColor: '#f97316' }}></div>
-              <h2 style={{ fontSize: '20px', fontWeight: '600', color: '#111827' }}>
-                Trending Posts (Last 24h)
-              </h2>
+          <div className="white-card">
+            <div className="section-header">
+              <div className="color-bar"></div>
+              <h2 className="section-title">Trending Posts (Last 24h)</h2>
             </div>
             <div>
               {trendingPosts.map((post, index) => (
-                <div key={index} style={{ 
-                  borderBottom: index !== trendingPosts.length - 1 ? '1px solid #f3f4f6' : 'none',
-                  paddingBottom: '16px',
-                  marginBottom: '16px'
-                }}>
-                  <h3 style={{ fontWeight: '500', color: '#111827', marginBottom: '8px', lineHeight: '1.4' }}>
-                    {post.title}
-                  </h3>
-                  <div style={{ display: 'flex', alignItems: 'center', fontSize: '14px', color: '#6b7280', gap: '16px', flexWrap: 'wrap' }}>
-                    <span>{post.subreddit}</span>
-                    <span>{post.upvotes} upvotes</span>
+                <div key={index} className="trending-post">
+                  <h3 className="post-title">{post.title}</h3>
+                  <div className="post-meta">
+                    <span>r/{post.subreddit}</span>
+                    <span>{post.score} upvotes</span>
                     <span>{post.comments} comments</span>
-                    <span style={{ color: '#059669' }}>{post.sentiment}</span>
+                    <span className="positive-sentiment">{post.sentiment}</span>
                   </div>
                 </div>
               ))}
@@ -182,12 +214,10 @@ function App() {
           </div>
 
           {/* Sentiment Analysis */}
-          <div style={whiteCardStyle}>
-            <div style={sectionHeaderStyle}>
-              <div style={{ ...colorBarStyle, backgroundColor: '#f97316' }}></div>
-              <h2 style={{ fontSize: '20px', fontWeight: '600', color: '#111827' }}>
-                Sentiment Analysis Trends
-              </h2>
+          <div className="white-card">
+            <div className="section-header">
+              <div className="color-bar"></div>
+              <h2 className="section-title">Sentiment Analysis Trends</h2>
             </div>
             <ResponsiveContainer width="100%" height={200}>
               <BarChart data={sentimentData}>
@@ -197,21 +227,16 @@ function App() {
                 <Bar dataKey="value" fill="#f97316" radius={[4, 4, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
-            <div style={{ fontSize: '12px', color: '#9ca3af', marginTop: '8px' }}>
-              Sentiment Distribution
-            </div>
           </div>
         </div>
 
         {/* Second Row */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(500px, 1fr))', gap: '32px', marginBottom: '32px' }}>
+        <div className="content-grid">
           {/* Subreddit Performance */}
-          <div style={whiteCardStyle}>
-            <div style={sectionHeaderStyle}>
-              <div style={{ ...colorBarStyle, backgroundColor: '#f97316' }}></div>
-              <h2 style={{ fontSize: '20px', fontWeight: '600', color: '#111827' }}>
-                Subreddit Performance
-              </h2>
+          <div className="white-card">
+            <div className="section-header">
+              <div className="color-bar"></div>
+              <h2 className="section-title">Subreddit Performance</h2>
             </div>
             <div>
               {subredditPerformance.map((subreddit, index) => (
@@ -234,12 +259,10 @@ function App() {
           </div>
 
           {/* Activity Heatmap */}
-          <div style={whiteCardStyle}>
-            <div style={sectionHeaderStyle}>
-              <div style={{ ...colorBarStyle, backgroundColor: '#f97316' }}></div>
-              <h2 style={{ fontSize: '20px', fontWeight: '600', color: '#111827' }}>
-                Activity Heatmap
-              </h2>
+          <div className="white-card">
+            <div className="section-header">
+              <div className="color-bar"></div>
+              <h2 className="section-title">Activity Heatmap</h2>
             </div>
             <ResponsiveContainer width="100%" height={200}>
               <BarChart data={activityHeatmap}>
@@ -249,21 +272,16 @@ function App() {
                 <Bar dataKey="activity" fill="#ea580c" radius={[4, 4, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
-            <div style={{ fontSize: '12px', color: '#9ca3af', marginTop: '8px' }}>
-              Activity Level
-            </div>
           </div>
         </div>
 
-        {/* Bottom Row */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(500px, 1fr))', gap: '32px' }}>
+        {/* Third Row */}
+        <div className="content-grid">
           {/* Post Volume Over Time */}
-          <div style={whiteCardStyle}>
-            <div style={sectionHeaderStyle}>
-              <div style={{ ...colorBarStyle, backgroundColor: '#f97316' }}></div>
-              <h2 style={{ fontSize: '20px', fontWeight: '600', color: '#111827' }}>
-                Post Volume Over Time
-              </h2>
+          <div className="white-card">
+            <div className="section-header">
+              <div className="color-bar"></div>
+              <h2 className="section-title">Post Volume Over Time</h2>
             </div>
             <ResponsiveContainer width="100%" height={250}>
               <LineChart data={volumeData}>
@@ -299,32 +317,28 @@ function App() {
           </div>
 
           {/* Top Performing Subreddits */}
-          <div style={whiteCardStyle}>
-            <div style={sectionHeaderStyle}>
-              <div style={{ ...colorBarStyle, backgroundColor: '#f97316' }}></div>
-              <h2 style={{ fontSize: '20px', fontWeight: '600', color: '#111827' }}>
-                Top Performing Subreddits
-              </h2>
+          <div className="white-card">
+            <div className="section-header">
+              <div className="color-bar"></div>
+              <h2 className="section-title">Top Performing Subreddits</h2>
             </div>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <ResponsiveContainer width="100%" height={250}>
-                <PieChart>
-                  <Pie
-                    data={pieChartData}
-                    cx="50%"
-                    cy="50%"
-                    innerRadius={60}
-                    outerRadius={100}
-                    paddingAngle={2}
-                    dataKey="value"
-                  >
-                    {pieChartData.map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={entry.color} />
-                    ))}
-                  </Pie>
-                </PieChart>
-              </ResponsiveContainer>
-            </div>
+            <ResponsiveContainer width="100%" height={250}>
+              <PieChart>
+                <Pie
+                  data={pieChartData}
+                  cx="50%"
+                  cy="50%"
+                  innerRadius={60}
+                  outerRadius={100}
+                  paddingAngle={2}
+                  dataKey="value"
+                >
+                  {pieChartData.map((entry, index) => (
+                    <Cell key={`cell-${index}`} fill={entry.color} />
+                  ))}
+                </Pie>
+              </PieChart>
+            </ResponsiveContainer>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '8px', marginTop: '16px' }}>
               {pieChartData.map((item, index) => (
                 <div key={index} style={{ display: 'flex', alignItems: 'center', fontSize: '14px' }}>

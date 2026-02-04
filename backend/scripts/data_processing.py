@@ -3,6 +3,7 @@ import pandas as pd
 from textblob import TextBlob
 from datetime import datetime
 import os
+import boto3
 from dotenv import load_dotenv
 
 # Loading environment variables
@@ -95,3 +96,19 @@ if __name__ == "__main__":
         print("\nProcessing complete! Check data/processed/ folder")
     else:
         print("No raw data files found!")
+
+    # Initializing S3 client
+    s3_client = boto3.client(
+        's3',
+        aws_access_key_id=os.getenv('AWS_ACCESS_KEY_ID'),
+        aws_secret_access_key=os.getenv('AWS_SECRET_ACCESS_KEY'),
+        region_name=os.getenv('AWS_DEFAULT_REGION')
+    )
+
+    # Uploading to S3
+    s3_bucket = os.getenv('S3_BUCKET_NAME')
+    s3_key = f"processed-data/{os.path.basename(output_path)}"
+
+    print(f"Uploading to S3: s3://{s3_bucket}/{s3_key}")
+    s3_client.upload_file(output_path, s3_bucket, s3_key)
+    print("Successfully uploaded to S3!")
