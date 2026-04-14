@@ -22,153 +22,130 @@ function App() {
   }, []);
 
   const fetchDashboardData = async () => {
-  try{
-    console.log('Fetching CSV...');
-    const response = await fetch('/reddit_processed_20260203_094456.csv');
-    console.log('Response status:', response.status);
-    console.log('Response OK:', response.ok);
-    const csvText = await response.text();
-    console.log('CSV length:', csvText.length);
-    
-    // Parse CSV better
-    const lines = csvText.split('\n').filter(line => line.trim());
-    const headers = lines[0].split(',').map(h => h.trim());
-    console.log('Headers:', headers);  
-    console.log('Total lines:', lines.length); 
-    
-    const data = lines.slice(1).map(line => {
-      // Handle quoted values properly
-      const values = line.match(/(".*?"|[^,]+)(?=\s*,|\s*$)/g) || [];
-      return headers.reduce((obj, header, index) => {
-        obj[header] = values[index] ? values[index].replace(/^"|"$/g, '').trim() : '';
-        return obj;
+    try {
+      const response = await fetch('/reddit_processed_20260203_094456.csv');
+      const csvText = await response.text();
+      
+      const lines = csvText.split('\n').filter(line => line.trim());
+      const headers = lines[0].split(',').map(h => h.trim());
+      
+      const data = lines.slice(1).map(line => {
+        const values = line.match(/(".*?"|[^,]+)(?=\s*,|\s*$)/g) || [];
+        return headers.reduce((obj, header, index) => {
+          obj[header] = values[index] ? values[index].replace(/^"|"$/g, '').trim() : '';
+          return obj;
+        }, {});
+      }).filter(row => row.post_id && row.subreddit);
+
+      const mainSubreddits = ['technology', 'programming', 'datascience', 'MachineLearning', 'Python'];
+      const filteredData = data.filter(row => mainSubreddits.includes(row.subreddit));
+
+      const totalPosts = filteredData.length;
+      const activeSubreddits = new Set(filteredData.map(d => d.subreddit)).size;
+      
+      const totalEngagement = filteredData.reduce((sum, d) => {
+        const engagement = parseInt(d.engagement);
+        return sum + (isNaN(engagement) ? 0 : engagement);
+      }, 0);
+      const avgEngagement = Math.round(totalEngagement / totalPosts) || 0;
+
+      setStats({ totalPosts, activeSubreddits, avgEngagement });
+
+      const sentimentCounts = filteredData.reduce((acc, d) => {
+        const sentiment = d.sentiment_category;
+        acc[sentiment] = (acc[sentiment] || 0) + 1;
+        return acc;
       }, {});
-    }).filter(row => row.post_id && row.subreddit); // Filter valid rows
 
-    console.log('Parsed data rows:', data.length); 
-    console.log('First row:', data[0]);
+      setSentimentData([
+        { name: 'Negative', value: sentimentCounts.negative || 0 },
+        { name: 'Neutral', value: sentimentCounts.neutral || 0 },
+        { name: 'Positive', value: sentimentCounts.positive || 0 }
+      ]);
 
-    // Filter to only our 5 main subreddits
-    const mainSubreddits = ['technology', 'programming', 'datascience', 'MachineLearning', 'Python'];
-    const filteredData = data.filter(row => mainSubreddits.includes(row.subreddit));
+      const sorted = filteredData
+        .sort((a, b) => parseInt(b.score || 0) - parseInt(a.score || 0))
+        .slice(0, 5);
+      
+      setTrendingPosts(sorted.map(post => ({
+        title: post.title,
+        subreddit: post.subreddit,
+        score: post.score,
+        comments: post.num_comments,
+        sentiment: post.sentiment_category
+      })));
 
-    console.log('Filtered data rows:', filteredData.length);  
-  console.log('Sample filtered row:', filteredData[0]); 
-
-    // Calculate stats
-    const totalPosts = filteredData.length;
-    const activeSubreddits = new Set(filteredData.map(d => d.subreddit)).size;
-    
-    // Fix engagement calculation - handle NaN
-    const totalEngagement = filteredData.reduce((sum, d) => {
-      const engagement = parseInt(d.engagement);
-      return sum + (isNaN(engagement) ? 0 : engagement);
-    }, 0);
-    const avgEngagement = Math.round(totalEngagement / totalPosts) || 0;
-
-    setStats({ totalPosts, activeSubreddits, avgEngagement });
-
-    // Rest of sentiment code stays the same...
-    const sentimentCounts = filteredData.reduce((acc, d) => {
-      const sentiment = d.sentiment_category;
-      acc[sentiment] = (acc[sentiment] || 0) + 1;
-      return acc;
-    }, {});
-
-    setSentimentData([
-      { name: 'Negative', value: sentimentCounts.negative || 0 },
-      { name: 'Neutral', value: sentimentCounts.neutral || 0 },
-      { name: 'Positive', value: sentimentCounts.positive || 0 }
-    ]);
-
-    // Trending posts
-    const sorted = filteredData
-      .sort((a, b) => parseInt(b.score || 0) - parseInt(a.score || 0))
-      .slice(0, 5);
-    
-    setTrendingPosts(sorted.map(post => ({
-      title: post.title,
-      subreddit: post.subreddit,
-      score: post.score,
-      comments: post.num_comments,
-      sentiment: post.sentiment_category
-    })));
-
-      // Subreddit Performance
       const subredditStats = {};
-    filteredData.forEach(post => {
-      const sub = post.subreddit;
-      if (!subredditStats[sub]) {
-        subredditStats[sub] = { posts: 0, comments: 0, scores: [] };
-      }
-      subredditStats[sub].posts++;
-      subredditStats[sub].comments += parseInt(post.num_comments || 0);
-      const score = parseInt(post.score || 0);
-      if (!isNaN(score)) subredditStats[sub].scores.push(score);
-    });
+      filteredData.forEach(post => {
+        const sub = post.subreddit;
+        if (!subredditStats[sub]) {
+          subredditStats[sub] = { posts: 0, comments: 0, scores: [] };
+        }
+        subredditStats[sub].posts++;
+        subredditStats[sub].comments += parseInt(post.num_comments || 0);
+        const score = parseInt(post.score || 0);
+        if (!isNaN(score)) subredditStats[sub].scores.push(score);
+      });
 
-    const perfData = Object.entries(subredditStats).map(([name, stats]) => ({
-      name: `r/${name}`,
-      posts: stats.posts,
-      comments: stats.comments,
-      avgScore: stats.scores.length > 0 
-        ? Math.round(stats.scores.reduce((a, b) => a + b, 0) / stats.scores.length)
-        : 0
-    }));
-    setSubredditPerformance(perfData);
-
-    // Activity Heatmap, Volume, Pie chart - same as before but use filteredData
-    const hourCounts = {};
-    filteredData.forEach(post => {
-      const hour = parseInt(post.created_hour || 0);
-      hourCounts[hour] = (hourCounts[hour] || 0) + 1;
-    });
-
-    const heatmapData = Object.entries(hourCounts)
-      .map(([hour, count]) => ({
-        time: `${hour}:00`,
-        activity: count
-      }))
-      .sort((a, b) => parseInt(a.time) - parseInt(b.time));
-    setActivityHeatmap(heatmapData);
-
-    // Volume over time
-    const dayCounts = {};
-    const dayComments = {};
-    filteredData.forEach(post => {
-      const day = post.created_day;
-      dayCounts[day] = (dayCounts[day] || 0) + 1;
-      dayComments[day] = (dayComments[day] || 0) + parseInt(post.num_comments || 0);
-    });
-
-    const dayOrder = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
-    const volumeChartData = dayOrder
-      .filter(day => dayCounts[day])
-      .map(day => ({
-        day: day.slice(0, 3),
-        posts: dayCounts[day] || 0,
-        comments: dayComments[day] || 0
+      const perfData = Object.entries(subredditStats).map(([name, stats]) => ({
+        name: `r/${name}`,
+        posts: stats.posts,
+        comments: stats.comments,
+        avgScore: stats.scores.length > 0 
+          ? Math.round(stats.scores.reduce((a, b) => a + b, 0) / stats.scores.length)
+          : 0
       }));
-    setVolumeData(volumeChartData);
+      setSubredditPerformance(perfData);
 
-      // Top Performing Subreddits (pie chart)
+      const hourCounts = {};
+      filteredData.forEach(post => {
+        const hour = parseInt(post.created_hour || 0);
+        hourCounts[hour] = (hourCounts[hour] || 0) + 1;
+      });
+
+      const heatmapData = Object.entries(hourCounts)
+        .map(([hour, count]) => ({
+          time: `${hour}:00`,
+          activity: count
+        }))
+        .sort((a, b) => parseInt(a.time) - parseInt(b.time));
+      setActivityHeatmap(heatmapData);
+
+      const dayCounts = {};
+      const dayComments = {};
+      filteredData.forEach(post => {
+        const day = post.created_day;
+        dayCounts[day] = (dayCounts[day] || 0) + 1;
+        dayComments[day] = (dayComments[day] || 0) + parseInt(post.num_comments || 0);
+      });
+
+      const dayOrder = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+      const volumeChartData = dayOrder
+        .filter(day => dayCounts[day])
+        .map(day => ({
+          day: day.slice(0, 3),
+          posts: dayCounts[day] || 0,
+          comments: dayComments[day] || 0
+        }));
+      setVolumeData(volumeChartData);
+
       const colors = ['#ea580c', '#f97316', '#fb923c', '#fdba74', '#fed7aa'];
-    const pieData = perfData
-      .sort((a, b) => b.posts - a.posts)
-      .slice(0, 5)
-      .map((sub, index) => ({
-        name: sub.name,
-        value: sub.posts,
-        color: colors[index]
-      }));
-    setPieChartData(pieData);
+      const pieData = perfData
+        .sort((a, b) => b.posts - a.posts)
+        .slice(0, 5)
+        .map((sub, index) => ({
+          name: sub.name,
+          value: sub.posts,
+          color: colors[index]
+        }));
+      setPieChartData(pieData);
 
-    setLoading(false);
-  } catch (error) {
-    console.error('Error fetching data:', error);
-    setLoading(false);
-  }
-};
+      setLoading(false);
+    } catch (error) {
+      console.error('Error fetching data:', error);
+      setLoading(false);
+    }
+  };
 
   if (loading) {
     return <div className="dashboard-container">Loading...</div>;
@@ -177,13 +154,11 @@ function App() {
   return (
     <div className="dashboard-container">
       <div className="dashboard-wrapper">
-        {/* Header */}
         <div className="dashboard-header">
           <h1 className="dashboard-title">Reddit Data Pipeline Dashboard</h1>
           <p className="dashboard-subtitle">Real-time analytics from your Reddit data pipeline</p>
         </div>
 
-        {/* KPI Cards */}
         <div className="kpi-grid">
           <div className="kpi-card">
             <h3 className="kpi-label">Total Posts Analyzed</h3>
@@ -202,9 +177,7 @@ function App() {
           </div>
         </div>
 
-        {/* First Row */}
         <div className="content-grid">
-          {/* Trending Posts */}
           <div className="white-card">
             <div className="section-header">
               <div className="color-bar"></div>
@@ -225,7 +198,6 @@ function App() {
             </div>
           </div>
 
-          {/* Sentiment Analysis */}
           <div className="white-card">
             <div className="section-header">
               <div className="color-bar"></div>
@@ -242,9 +214,7 @@ function App() {
           </div>
         </div>
 
-        {/* Second Row */}
         <div className="content-grid">
-          {/* Subreddit Performance */}
           <div className="white-card">
             <div className="section-header">
               <div className="color-bar"></div>
@@ -270,7 +240,6 @@ function App() {
             </div>
           </div>
 
-          {/* Activity Heatmap */}
           <div className="white-card">
             <div className="section-header">
               <div className="color-bar"></div>
@@ -287,9 +256,7 @@ function App() {
           </div>
         </div>
 
-        {/* Third Row */}
         <div className="content-grid">
-          {/* Post Volume Over Time */}
           <div className="white-card">
             <div className="section-header">
               <div className="color-bar"></div>
@@ -328,7 +295,6 @@ function App() {
             </div>
           </div>
 
-          {/* Top Performing Subreddits */}
           <div className="white-card">
             <div className="section-header">
               <div className="color-bar"></div>
