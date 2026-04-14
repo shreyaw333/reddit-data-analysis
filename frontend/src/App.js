@@ -45,12 +45,15 @@ function App() {
       }, {});
     }).filter(row => row.post_id && row.subreddit); // Filter valid rows
 
-    console.log('Parsed data rows:', data.length);  // ADD THIS
+    console.log('Parsed data rows:', data.length); 
     console.log('First row:', data[0]);
 
     // Filter to only our 5 main subreddits
     const mainSubreddits = ['technology', 'programming', 'datascience', 'MachineLearning', 'Python'];
     const filteredData = data.filter(row => mainSubreddits.includes(row.subreddit));
+
+    console.log('Filtered data rows:', filteredData.length);  
+  console.log('Sample filtered row:', filteredData[0]); 
 
     // Calculate stats
     const totalPosts = filteredData.length;
