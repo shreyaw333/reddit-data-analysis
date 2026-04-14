@@ -22,9 +22,13 @@ function App() {
   }, []);
 
   const fetchDashboardData = async () => {
-  try {
+  try{
+    console.log('Fetching CSV...');
     const response = await fetch('/reddit_processed_20260203_094456.csv');
+    console.log('Response status:', response.status);
+    console.log('Response OK:', response.ok);
     const csvText = await response.text();
+    console.log('CSV length:', csvText.length);
     
     // Parse CSV better
     const lines = csvText.split('\n').filter(line => line.trim());
