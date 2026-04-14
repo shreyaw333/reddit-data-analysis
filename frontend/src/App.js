@@ -33,6 +33,8 @@ function App() {
     // Parse CSV better
     const lines = csvText.split('\n').filter(line => line.trim());
     const headers = lines[0].split(',').map(h => h.trim());
+    console.log('Headers:', headers);  
+    console.log('Total lines:', lines.length); 
     
     const data = lines.slice(1).map(line => {
       // Handle quoted values properly
@@ -42,6 +44,9 @@ function App() {
         return obj;
       }, {});
     }).filter(row => row.post_id && row.subreddit); // Filter valid rows
+
+    console.log('Parsed data rows:', data.length);  // ADD THIS
+    console.log('First row:', data[0]);
 
     // Filter to only our 5 main subreddits
     const mainSubreddits = ['technology', 'programming', 'datascience', 'MachineLearning', 'Python'];
